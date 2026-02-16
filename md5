@@ -1,0 +1,58 @@
+#!/usr/bin/env python3
+import hashlib
+import binascii
+
+def create_md5_collision_demo():
+    print("=== MD5 COLLISION DEMONSTRATION ===")
+    
+    # Famous MD5 collision pair
+    msg1 = binascii.unhexlify(
+        "d131dd02c5e6eec4693d9a0698aff95c2fcab58712467eab4004583eb8fb7f89"
+        "55ad340609f4b30283e488832571415a085125e8f7cdc99fd91dbdf280373c5b"
+        "d8823e3156348f5bae6dacd436c919c6dd53e2b487da03fd02396306d248cda0"
+        "e99f33420f577ee8ce54b67080a80d1ec69821bcb6a8839396f9652b6ff72a70"
+    )
+    
+    msg2 = binascii.unhexlify(
+        "d131dd02c5e6eec4693d9a0698aff95c2fcab50712467eab4004583eb8fb7f89"
+        "55ad340609f4b30283e4888325f1415a085125e8f7cdc99fd91dbd7280373c5b"
+        "d8823e3156348f5bae6dacd436c919c6dd53e23487da03fd02396306d248cda0"
+        "e99f33420f577ee8ce54b67080280d1ec69821bcb6a8839396f965ab6ff72a70"
+    )
+
+    # 1. Calculate Hashes
+    h1 = hashlib.md5(msg1).hexdigest()
+    h2 = hashlib.md5(msg2).hexdigest()
+
+    # 2. Find Differences
+    diffs = []
+    for i in range(len(msg1)):
+        if msg1[i] != msg2[i]:
+            diffs.append((i, hex(msg1[i]), hex(msg2[i])))
+
+    # 3. Display Results
+    print(f"\n[+] MD5(msg1): {h1}")
+    print(f"[+] MD5(msg2): {h2}")
+    print(f"[!] Collision Detected: {h1 == h2}")
+
+    print("\n[Phase 1] Content Comparison")
+    print(f"  - Message Length: {len(msg1)} bytes")
+    print(f"  - Number of differing bytes: {len(diffs)}")
+    
+    print("\n[Phase 2] Specific Byte Differences (Offset: Msg1 vs Msg2)")
+    for offset, b1, b2 in diffs:
+        print(f"  Offset {offset:3}: {b1} != {b2}")
+
+    # 4. Prove "Identity Extension"
+    # If we append the same suffix to both, the collision persists!
+    suffix = b" -- This is a shared suffix."
+    h1_ext = hashlib.md5(msg1 + suffix).hexdigest()
+    h2_ext = hashlib.md5(msg2 + suffix).hexdigest()
+    
+    print("\n[Phase 3] The Merkle–Damgård Property")
+    print(f"  - New Hash 1: {h1_ext}")
+    print(f"  - New Hash 2: {h2_ext}")
+    print(f"  - Collision persists after append: {h1_ext == h2_ext}")
+
+if __name__ == "__main__":
+    create_md5_collision_demo()

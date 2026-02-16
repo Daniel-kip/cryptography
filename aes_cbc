@@ -1,0 +1,41 @@
+#!/usr/bin/env python3
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import pad
+import os
+
+def cbc_bitflip_demo():
+    key = os.urandom(16)
+    iv = os.urandom(16)
+    
+    # We make a message that is exactly two blocks long
+    # Block 0 (16 bytes): "COMMENT=PAYMENT:"
+    # Block 1 (16 bytes): "USER=ALICE_1000$"
+    plaintext = b"COMMENT=PAYMENT:USER=ALICE_1000$"
+    print(f"Original Plaintext: {plaintext}")
+    
+    # Encrypt
+    cipher = AES.new(key, AES.MODE_CBC, iv)
+    ciphertext = bytearray(cipher.encrypt(pad(plaintext, AES.block_size)))
+    
+    # --- THE ATTACK ---
+    # We want to change 'A' to 'B' in "ALICE".
+    # 'A' is at index 21 of the plaintext (Block 1, position 5).
+    # To change Block 1, we must flip the bit in the PREVIOUS ciphertext block (Block 0).
+    
+    target_pos = 21 
+    prev_block_pos = target_pos - 16 # Position 5 in Block 0
+    
+    # Flip the bit: Current_Byte XOR Old_Char XOR New_Char
+    ciphertext[prev_block_pos] ^= ord('A') ^ ord('B')
+    print(f"This is the ciphertext {ciphertext}")
+    
+    # Decrypt
+    cipher2 = AES.new(key, AES.MODE_CBC, iv)
+    decrypted = cipher2.decrypt(ciphertext)
+    
+    print("-" * 30)
+    print(f"Decrypted (Block 0): {decrypted[:16].hex()} (GARBAGE)")
+    print(f"Decrypted (Block 1): {decrypted[16:32].decode(errors='ignore')}")
+    print("-" * 30)
+
+cbc_bitflip_demo()

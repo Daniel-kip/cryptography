@@ -1,0 +1,195 @@
+#!/usr/bin/env python3
+from PIL import Image
+import numpy as np
+import os
+import subprocess
+
+def create_test_image():
+    """Create a simple test image if none exists"""
+    if not os.path.exists('test_image.png'):
+        try:
+            # Try using PIL to create image
+            img = Image.new('RGB', (100, 100), color='white')
+            img.save('test_image.png')
+            print("[*] Created test_image.png")
+        except:
+            # Fallback: generate random noise
+            img_array = np.random.randint(0, 255, (100, 100, 3), dtype=np.uint8)
+            img = Image.fromarray(img_array)
+            img.save('test_image.png')
+            print("[*] Created test_image.png (random noise)")
+
+def hide_data_lsb(image_path, data, output_path):
+    """Hide data in LSB"""
+    img = Image.open(image_path)
+    img_array = np.array(img)
+    
+    # Convert data to binary with proper delimiter
+    binary_data = ''.join(format(ord(c), '08b') for c in data)
+    binary_data += '1111111111111110'  # EOF marker
+    
+    flat = img_array.flatten()
+    
+    if len(binary_data) > len(flat):
+        raise ValueError(f"Data too large: {len(binary_data)} bits > {len(flat)} pixels")
+    
+    # Make a copy to avoid modifying original
+    flat_copy = flat.copy()
+    
+    for i in range(len(binary_data)):
+        # Clear LSB and set to message bit
+        flat_copy[i] = (flat_copy[i] & 0xFE) | int(binary_data[i])
+    
+    result = flat_copy.reshape(img_array.shape)
+    Image.fromarray(result.astype('uint8')).save(output_path)
+    print(f"[*] Hidden {len(binary_data)//8} bytes in {output_path}")
+    return len(binary_data) // 8
+
+def extract_data_lsb(image_path):
+    """Extract LSB hidden data """
+    img = Image.open(image_path)
+    img_array = np.array(img)
+    flat = img_array.flatten()
+    
+    # Extract bits
+    bits = []
+    for i in range(min(len(flat), 80000)):  # Limit to reasonable size
+        bits.append(str(flat[i] & 1))
+    
+    # Convert bits to bytes
+    bytes_data = []
+    for i in range(0, len(bits) - 16, 8):
+        if i + 8 <= len(bits):
+            byte_bits = bits[i:i+8]
+            byte_str = ''.join(byte_bits)
+            byte_val = int(byte_str, 2)
+            bytes_data.append(byte_val)
+            
+            # Check for EOF marker (FF FE)
+            if len(bytes_data) >= 2:
+                if bytes_data[-2] == 255 and bytes_data[-1] == 254:
+                    bytes_data = bytes_data[:-2]
+                    break
+    
+    # Convert to string
+    try:
+        result = bytes(bytes_data).decode('utf-8')
+        return result
+    except Exception as e:
+        return f"No valid ASCII data found: {e}"
+
+def statistical_analysis(image_path):
+    """Detect LSB steganography - FIXED VERSION"""
+    img = Image.open(image_path)
+    img_array = np.array(img)
+    flat = img_array.flatten()
+    
+    # Sample LSBs - convert to Python ints to avoid overflow
+    sample_size = min(1000, len(flat))
+    lsb_sample = [int(flat[i] & 1) for i in range(sample_size)]
+    
+    # Calculate statistics using Python ints
+    ones = sum(lsb_sample)
+    zeros = len(lsb_sample) - ones
+    
+    # Chi-square test
+    expected = len(lsb_sample) / 2
+    chi_square = ((zeros - expected)**2 / expected + 
+                  (ones - expected)**2 / expected)
+    
+    print(f"[*] LSB Analysis - 0s: {zeros}, 1s: {ones}")
+    print(f"[*] Chi-square: {chi_square:.2f}")
+    
+    if abs(zeros - ones) < 50:
+        print("[!] SUSPICIOUS: LSBs too evenly distributed")
+        print("[!] Likely contains hidden data")
+    else:
+        print("[*] LSB distribution appears natural")
+    
+    return zeros, ones, chi_square
+
+def brute_force_extract(image_path):
+    """Try different LSB extraction methods"""
+    img = Image.open(image_path)
+    img_array = np.array(img)
+    flat = img_array.flatten()
+    
+    print("\n[*] Attempting brute force extraction...")
+    
+    # Try different bit positions
+    for bit_pos in range(1, 5):  # Try bits 1-4
+        bits = []
+        for i in range(min(len(flat), 1000)):
+            bits.append(str((flat[i] >> bit_pos) & 1))
+        
+        # Convert to bytes
+        bytes_data = []
+        for i in range(0, len(bits) - 8, 8):
+            if i + 8 <= len(bits):
+                byte_str = ''.join(bits[i:i+8])
+                bytes_data.append(int(byte_str, 2))
+        
+        try:
+            result = bytes(bytes_data[:50]).decode('utf-8', errors='ignore')
+            if any(c.isprintable() for c in result):
+                print(f"[*] Bit position {bit_pos}: {repr(result[:50])}...")
+        except:
+            pass
+
+def visualize_lsb(image_path):
+    """Create visualization of LSB plane"""
+    img = Image.open(image_path)
+    img_array = np.array(img)
+    
+    # Extract LSB plane
+    lsb_plane = (img_array & 1) * 255
+    
+    # Save visualization
+    lsb_img = Image.fromarray(lsb_plane.astype('uint8'))
+    lsb_img.save('lsb_plane.png')
+    print("[*] LSB plane visualization saved to lsb_plane.png")
+
+# MAIN EXECUTION
+print("=" * 60)
+print("LSB STEGANOGRAPHY DETECTION & EXTRACTION")
+print("=" * 60)
+
+# Create test image if needed
+create_test_image()
+
+# STEP 1: Hide data
+print("\n[STEP 1] Hiding secret message...")
+secret = "colkimi: CSK_sentive data"
+hide_data_lsb('test_image.png', secret, 'stego_image.png')
+
+# STEP 2: Extract hidden data
+print("\n[STEP 2] Extracting hidden data...")
+hidden = extract_data_lsb('stego_image.png')
+print(f"[!] EXTRACTED: {hidden}")
+
+# STEP 3: Statistical analysis
+print("\n[STEP 3] Statistical steganalysis...")
+statistical_analysis('stego_image.png')
+
+# STEP 4: Compare with clean image
+print("\n[STEP 4] Analyzing clean image for comparison...")
+if os.path.exists('test_image.png'):
+    statistical_analysis('test_image.png')
+
+# STEP 5: Brute force extraction
+brute_force_extract('stego_image.png')
+
+# STEP 6: Visualize LSB plane
+print("\n[STEP 5] Visualizing LSB plane...")
+visualize_lsb('stego_image.png')
+
+# STEP 7: Verify with external tools
+print("\n[STEP 6] External tool checks:")
+print("[*] If you have zsteg installed:")
+print("    zsteg -a stego_image.png")
+print("[*] If you have steghide:")
+print("    steghide info stego_image.png")
+
+print("\n" + "=" * 60)
+print("COMPLETE: Check lsb_plane.png for visualization")
+print("=" * 60)

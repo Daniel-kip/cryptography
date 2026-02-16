@@ -1,0 +1,40 @@
+#!/usr/bin/env python3
+from Crypto.Cipher import DES
+import itertools
+import string
+import time
+
+def des_bruteforce_demo():
+    """Show why 56-bit keys are obsolete"""
+    
+    # Known plaintext-ciphertext pair
+    plaintext = b"TESTBLOC"
+    key = b"8CHARKEY"  # DES key is exactly 56 bits
+    
+    cipher = DES.new(key, DES.MODE_ECB)
+    ciphertext = cipher.encrypt(plaintext)
+    
+    print(f"[*] Key: {key}")
+    print(f"[*] Ciphertext: {ciphertext.hex()}")
+    
+    # Estimate brute force time
+    key_space = 2**56
+    checks_per_second = 10000000  # 10 million (modern CPU)
+    seconds = key_space / checks_per_second
+    years = seconds / (365 * 24 * 3600)
+    
+    print(f"\n[*] Key space: 2^56 = {key_space}")
+    print(f"[*] @ {checks_per_second:,} keys/sec:")
+    print(f"[*] Time to break: {years:.1f} years")
+    
+    # With specialized hardware (Copacobana, 2008)
+    checks_per_second_fpga = 2**31  # ~2 billion
+    seconds_fpga = key_space / checks_per_second_fpga
+    
+    print(f"\n[*] With FPGA (2008 technology):")
+    print(f"[*] Time: {seconds_fpga/60:.1f} minutes")
+    
+    print("\n[!] DES is effectively broken since 1998!")
+    print("[!] EFF Deep Crack broke DES in 56 hours for $250,000")
+
+des_bruteforce_demo()

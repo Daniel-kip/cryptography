@@ -1,0 +1,59 @@
+#!/usr/bin/env python3
+import gmpy2
+from Crypto.Util.number import getPrime, bytes_to_long, long_to_bytes
+
+def hastad_broadcast_demo():
+    print("=== RSA HÅSTAD'S BROADCAST ATTACK (gmpy2 Edition) ===")
+    
+    # 1. SETUP: The vulnerable parameters
+    e = 3
+    message = b"KALI_LINUX_ROOT_ACCESS_2026"
+    m = bytes_to_long(message)
+    
+    ns = []
+    cs = []
+
+    print(f"\n[Phase 1] Encrypting same message to {e} recipients...")
+    for i in range(e):
+        p, q = getPrime(512), getPrime(512)
+        n = p * q
+        c = pow(m, e, n)
+        ns.append(n)
+        cs.append(c)
+        print(f"  Recipient {i+1}: n = {str(n)[:20]}... (Ciphertext captured)")
+
+    # 2. THE ATTACK: Chinese Remainder Theorem
+    print(f"\n[Phase 2] Applying Chinese Remainder Theorem (CRT)...")
+    
+    # Calculate N = n1 * n2 * n3
+    N = ns[0] * ns[1] * ns[2]
+    print(f"  Step 1: Calculate huge combined modulus N (Product of all n).")
+    
+    # CRT math: result = sum(c_i * N_i * inv(N_i, n_i)) mod N
+    result = 0
+    for i in range(e):
+        Ni = N // ns[i]
+        # Using gmpy2 for high-speed modular inverse
+        inv = gmpy2.invert(Ni, ns[i])
+        result += cs[i] * Ni * inv
+        print(f"  Step 2.{i+1}: Computed weight for Ciphertext {i+1}.")
+
+    m_cubed = result % N
+    print(f"  Step 3: Combined value (m^{e} mod N) is ready.")
+
+    # 3. THE RECOVERY: Integer Root
+    print(f"\n[Phase 3] Removing the exponent without a Private Key...")
+    
+    # In normal RSA, m^e is bigger than n, so it "wraps around" (modulo).
+    # With CRT, m^e is SMALLER than N, so we just take a standard root.
+    m_recovered, exact = gmpy2.iroot(m_cubed, e)
+
+    if exact:
+        final_text = long_to_bytes(int(m_recovered))
+        print(f"\n[!] SUCCESS: Root is exact!")
+        print(f"[!] Cracked Message: {final_text.decode()}")
+    else:
+        print("\n[-] FAILURE: The root was not exact. Is e > 3?")
+
+if __name__ == "__main__":
+    hastad_broadcast_demo()
